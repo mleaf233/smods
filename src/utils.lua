@@ -830,6 +830,7 @@ function SMODS.poll_rarity(_pool_key, _rand_key)
             SMODS.remove_pool(available_rarities, v.key)
         end
     end
+    G.ARGS.TEMP_POOL = EMPTY(G.ARGS.TEMP_POOL)
 
     -- Calculate total rates of rarities
     local total_weight = 0
@@ -3191,10 +3192,12 @@ function SMODS.should_handle_limit(area)
 end
 
 function CardArea:handle_card_limit()
-    if SMODS.should_handle_limit(self) and not G.TAROT_INTERRUPT then
-        self.config.card_limits.extra_slots = self:count_property('card_limit')
-        self.config.card_limits.total_slots = self.config.card_limits.extra_slots + (self.config.card_limits.base or 0) + (self.config.card_limits.mod or 0)
-        self.config.card_limits.extra_slots_used = self:count_property('extra_slots_used')
+    if SMODS.should_handle_limit(self) then
+        if not G.TAROT_INTERRUPT then
+            self.config.card_limits.extra_slots = self:count_property('card_limit')
+            self.config.card_limits.total_slots = self.config.card_limits.extra_slots + (self.config.card_limits.base or 0) + (self.config.card_limits.mod or 0)
+            self.config.card_limits.extra_slots_used = self:count_property('extra_slots_used')
+        end
         self.config.card_count = #self.cards + self.config.card_limits.extra_slots_used
         
         if G.hand and self == G.hand and (self.config.card_count or 0) + (SMODS.cards_to_draw or 0) < (self.config.card_limits.total_slots or 0) then
@@ -3251,6 +3254,12 @@ function SMODS.create_sprite(X, Y, W, H, atlas, pos)
     atlas = SMODS.get_atlas(atlas_key)
     assert(atlas, "SMODS.create_sprite called with invalid atlas key: "..atlas_key)
     return SMODS.get_atlas_sprite_class(atlas_key)(X, Y, W, H, atlas, pos)
+end
+
+local animate = AnimatedSprite.animate
+function AnimatedSprite:animate()
+    if not self.current_animation.frames then return end
+    animate(self)
 end
 
 function SMODS.is_active_blind(key, ignore_disabled)
@@ -3314,14 +3323,16 @@ function SMODS.upgrade_poker_hands(args)
             end
         end
         for i, parameter in ipairs(args.parameters) do
-            G.GAME.hands[hand][parameter] = args.func(G.GAME.hands[hand][parameter], hand, parameter)
-            if not instant then
-                G.E_MANAGER:add_event(Event({trigger = 'after', delay = i == 1 and 0.2 or 0.9, func = function()
-                    play_sound('tarot1')
-                    if args.from then args.from:juice_up(0.8, 0.5) end
-                    G.TAROT_INTERRUPT_PULSE = true
-                    return true end }))
-                update_hand_text({delay = 0}, {[parameter] = G.GAME.hands[hand][parameter], StatusText = true})
+            if G.GAME.hands[hand][parameter] then
+                G.GAME.hands[hand][parameter] = args.func(G.GAME.hands[hand][parameter], hand, parameter)
+                if not instant then
+                    G.E_MANAGER:add_event(Event({trigger = 'after', delay = i == 1 and 0.2 or 0.9, func = function()
+                        play_sound('tarot1')
+                        if args.from then args.from:juice_up(0.8, 0.5) end
+                        G.TAROT_INTERRUPT_PULSE = true
+                        return true end }))
+                    update_hand_text({delay = 0}, {[parameter] = G.GAME.hands[hand][parameter], StatusText = true})
+                end
             end
         end
         if args.level_up then
